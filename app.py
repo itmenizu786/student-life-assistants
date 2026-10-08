@@ -1,388 +1,219 @@
-
 import json
 from pathlib import Path
-
+from datetime import date
 import streamlit as st
 
-DATA_FILE = Path("student_data.json")
-
-DEFAULT_DATA = {
-    "profile": {"name": "", "class": "", "school": ""},
-    "subjects": [],
+ROOT = Path(__file__).parent
+DATA_FILE = ROOT / "student_data.json"
+DEFAULT = {
+    "profile": {"name": "Student", "grade": "SSLC", "goal": "Learn something new every day"},
+    "subjects": ["English", "Mathematics", "Science"],
     "tasks": [],
     "marks": [],
     "timetable": []
 }
 
-st.set_page_config(
-    page_title="Student Life Assistant",
-    page_icon="📚",
-    layout="wide"
-)
-
+st.set_page_config(page_title="NOVA | Student Life", page_icon="🌑", layout="wide")
 
 def load_data():
-    data = {
-        "profile": DEFAULT_DATA["profile"].copy(),
-        "subjects": [],
-        "tasks": [],
-        "marks": [],
-        "timetable": []
-    }
-
     if DATA_FILE.exists():
         try:
-            with DATA_FILE.open("r", encoding="utf-8") as file:
-                saved = json.load(file)
-
-            if isinstance(saved, dict):
-                if isinstance(saved.get("profile"), dict):
-                    data["profile"].update(saved["profile"])
-
-                for key in ("subjects", "tasks", "marks", "timetable"):
-                    if isinstance(saved.get(key), list):
-                        data[key] = saved[key]
-
-        except (OSError, json.JSONDecodeError):
-            st.warning("Could not read the saved data file.")
-
-    return data
-
-
-def save_data():
-    try:
-        with DATA_FILE.open("w", encoding="utf-8") as file:
-            json.dump(st.session_state.data, file, indent=4)
-        return True
-    except OSError as error:
-        st.error(f"Could not save data: {error}")
-        return False
-
+            saved = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+            for k, v in DEFAULT.items():
+                saved.setdefault(k, v.copy() if isinstance(v, dict) else list(v))
+            return saved
+        except (json.JSONDecodeError, OSError):
+            pass
+    return json.loads(json.dumps(DEFAULT))
 
 if "data" not in st.session_state:
     st.session_state.data = load_data()
-
 data = st.session_state.data
 
+def save():
+    DATA_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
-def grade_for(percentage):
-    if percentage >= 90:
-        return "A+"
-    if percentage >= 80:
-        return "A"
-    if percentage >= 70:
-        return "B+"
-    if percentage >= 60:
-        return "B"
-    if percentage >= 50:
-        return "C+"
-    if percentage >= 40:
-        return "C"
-    return "D"
-
-
-def results():
-    total = sum(float(m.get("mark", 0)) for m in data["marks"])
-    maximum = sum(float(m.get("maximum", 0)) for m in data["marks"])
-    percentage = total / maximum * 100 if maximum else 0
-    return total, maximum, percentage
-
-
-def refresh_saved_data():
-    save_data()
-    st.rerun()
-
-
-# Sidebar navigation
-with st.sidebar:
-    st.title("📚 Student Life")
-    st.caption("Your personal study space")
-    page = st.radio(
-        "NAVIGATION",
-        [
-            "Dashboard",
-            "Student Profile",
-            "Subjects",
-            "Homework & Tasks",
-            "Marks & Results",
-            "Timetable",
-            "Search",
-            "About"
-        ]
-    )
+def header(kicker, title, subtitle):
+    st.caption(kicker.upper())
+    st.title(title)
+    st.write(subtitle)
     st.divider()
-    st.caption("Python + Streamlit")
 
+def metric(label, value, help_text):
+    with st.container(border=True):
+        st.caption(label.upper())
+        st.markdown(f"## {value}")
+        st.caption(help_text)
 
-# Page heading
-st.title("📚 Student Life Assistant")
-st.caption("Organise your studies, track your progress, and stay on top of tasks.")
+st.sidebar.markdown("# 🌑 NOVA")
+st.sidebar.caption("STUDENT LIFE ASSISTANT")
+st.sidebar.divider()
+page = st.sidebar.radio("YOUR WORKSPACE", [
+    "Overview", "My Tasks", "Subjects", "Marks & Results", "Timetable", "My Profile"
+])
+st.sidebar.divider()
+st.sidebar.info("Plan with purpose. Learn at your pace.")
+st.sidebar.caption("Python + Streamlit")
 
-profile = data["profile"]
-
-
-# ---------------- DASHBOARD ----------------
-if page == "Dashboard":
-    name = profile.get("name") or "Student"
-    st.subheader(f"Welcome back, {name} 👋")
-    st.write(
-        f"{profile.get('class') or 'Class not set'} · "
-        f"{profile.get('school') or 'School not set'}"
-    )
-
-    completed = sum(1 for task in data["tasks"] if task.get("completed", False))
-    pending = len(data["tasks"]) - completed
-    total, maximum, percentage = results()
-
+if page == "Overview":
+    header("Your personal command center", "Welcome to your space. ✨",
+           "A focused, calm workspace to organise school and celebrate progress.")
+    tasks = data["tasks"]
+    pending = [x for x in tasks if not x.get("done")]
+    done = [x for x in tasks if x.get("done")]
+    marks = data["marks"]
+    avg = sum(x["mark"] for x in marks) / len(marks) if marks else 0
     a, b, c, d = st.columns(4)
-    a.metric("Subjects", len(data["subjects"]))
-    b.metric("Total tasks", len(data["tasks"]))
-    c.metric("Pending tasks", pending)
-    d.metric("Timetable entries", len(data["timetable"]))
+    with a: metric("Subjects", len(data["subjects"]), "Your learning map")
+    with b: metric("Open tasks", len(pending), "One step at a time")
+    with c: metric("Completed", len(done), "Progress you've made")
+    with d: metric("Mark average", f"{avg:.1f}%", "Across saved results" if marks else "Add your first result")
+    left, right = st.columns([1.5, 1], gap="large")
+    with left:
+        st.subheader("⚡ Focus board")
+        with st.container(border=True):
+            todays = [x for x in pending if x.get("due") == date.today().isoformat()]
+            if todays:
+                for t in todays: st.write(f"• **{t['title']}**")
+            elif pending:
+                next_task = sorted(pending, key=lambda x: x.get("due") or "9999-12-31")[0]
+                st.markdown(f"### {next_task['title']}")
+                st.caption(f"Next due: {next_task.get('due') or 'No date set'}")
+            else:
+                st.write("Your task list is clear. Take a breath, or add a new task.")
+            st.progress(len(done) / max(len(tasks), 1), text=f"{len(done)} of {len(tasks)} tasks completed" if tasks else "Your progress begins with your first task")
+    with right:
+        st.subheader("🎯 Current goal")
+        with st.container(border=True):
+            st.markdown(f"### {data['profile'].get('goal') or 'Choose a goal that matters to you.'}")
+            st.caption(f"Keep going, {data['profile'].get('name') or 'student'}. Small steps count.")
+        st.subheader("✨ Quick add")
+        if st.button("＋ Create a task", type="primary", use_container_width=True):
+            st.session_state.show_quick_task = True
+        if st.session_state.get("show_quick_task"):
+            with st.form("quick_task", clear_on_submit=True):
+                title = st.text_input("Task name")
+                due = st.date_input("Due date", value=date.today())
+                priority = st.selectbox("Priority", ["Normal", "Important", "Urgent"])
+                if st.form_submit_button("Save task"):
+                    if title.strip():
+                        data["tasks"].append({"title": title.strip(), "due": due.isoformat(), "priority": priority, "done": False})
+                        save()
+                        st.session_state.show_quick_task = False
+                        st.rerun()
+                    else: st.warning("Please enter a task name.")
 
-    st.subheader("Academic progress")
-    left, right = st.columns(2)
-    left.metric("Marks percentage", f"{percentage:.1f}%" if maximum else "Not available")
-    right.metric("Overall grade", grade_for(percentage) if maximum else "—")
+elif page == "My Tasks":
+    header("Plan • Do • Finish", "My Tasks", "Assignments, revision, and reminders — all in one place.")
+    with st.expander("＋ Add a task", expanded=not bool(data["tasks"])):
+        with st.form("task_add", clear_on_submit=True):
+            title = st.text_input("Task or assignment", placeholder="e.g. Revise chapter 3")
+            c1, c2 = st.columns(2)
+            due = c1.date_input("Due date", value=date.today())
+            priority = c2.selectbox("Priority", ["Normal", "Important", "Urgent"])
+            note = st.text_input("Note (optional)")
+            if st.form_submit_button("Add task", type="primary"):
+                if title.strip():
+                    data["tasks"].append({"title": title.strip(), "due": due.isoformat(), "priority": priority, "note": note, "done": False})
+                    save(); st.rerun()
+                else: st.warning("Enter a task name.")
+    mode = st.segmented_control("Show", ["All", "Open", "Completed"], default="All")
+    shown = [(i, t) for i, t in enumerate(data["tasks"]) if mode == "All" or (mode == "Open" and not t.get("done")) or (mode == "Completed" and t.get("done"))]
+    if not shown: st.info("Nothing here yet. Add a task above.")
+    for i, task in shown:
+        with st.container(border=True):
+            c1, c2, c3 = st.columns([0.08, 0.72, 0.2])
+            checked = c1.checkbox("Done", value=task.get("done", False), key=f"done_{i}", label_visibility="collapsed")
+            if checked != task.get("done", False):
+                task["done"] = checked; save(); st.rerun()
+            with c2:
+                st.markdown(f"~~{task['title']}~~" if task.get("done") else f"**{task['title']}**")
+                st.caption(f"Due {task.get('due') or 'no date'} · {task.get('priority', 'Normal')} priority")
+                if task.get("note"): st.caption(task["note"])
+            if c3.button("Delete", key=f"del_task_{i}"):
+                data["tasks"].pop(i); save(); st.rerun()
 
-    if maximum:
-        st.progress(min(percentage / 100, 1.0))
-        st.caption(f"Marks: {total:g} out of {maximum:g}")
-
-    st.subheader("Homework overview")
-    if data["tasks"]:
-        for index, task in enumerate(data["tasks"]):
-            status = "✅ Completed" if task.get("completed", False) else "🟡 Pending"
-            st.write(
-                f"**{task.get('title', 'Untitled')}** — {status}  \n"
-                f"Subject: {task.get('subject', 'General')} · "
-                f"Due: {task.get('due', 'Not set')}"
-            )
-    else:
-        st.info("No tasks yet. Open Homework & Tasks to add your first task.")
-
-
-# ---------------- PROFILE ----------------
-elif page == "Student Profile":
-    st.subheader("Student profile")
-    st.write("Enter your details below.")
-
-    with st.form("profile_form"):
-        name = st.text_input("Student name", profile.get("name", ""))
-        class_name = st.text_input("Class / Grade", profile.get("class", ""))
-        school = st.text_input("School name", profile.get("school", ""))
-        submitted = st.form_submit_button("Save profile")
-
-    if submitted:
-        profile["name"] = name.strip()
-        profile["class"] = class_name.strip()
-        profile["school"] = school.strip()
-        if save_data():
-            st.success("Profile saved!")
-
-
-# ---------------- SUBJECTS ----------------
 elif page == "Subjects":
-    st.subheader("Subject manager")
-
-    with st.form("subject_form", clear_on_submit=True):
-        subject = st.text_input("Subject name")
-        add_subject = st.form_submit_button("Add subject")
-
-    if add_subject:
-        subject = subject.strip()
-        if not subject:
-            st.error("Enter a subject name.")
-        elif any(s.lower() == subject.lower() for s in data["subjects"]):
-            st.warning("That subject already exists.")
-        else:
-            data["subjects"].append(subject)
-            if save_data():
-                st.success(f"{subject} added!")
-
+    header("Your learning map", "Subjects", "Keep your learning areas organised and easy to find.")
+    with st.form("subject_add", clear_on_submit=True, border=True):
+        name = st.text_input("Subject name", placeholder="e.g. Physics")
+        if st.form_submit_button("＋ Add subject", type="primary"):
+            if name.strip() and name.strip() not in data["subjects"]:
+                data["subjects"].append(name.strip()); save(); st.rerun()
+            else: st.warning("Enter a new subject name.")
     if data["subjects"]:
-        st.write("### Your subjects")
+        cols = st.columns(3)
         for i, subject in enumerate(data["subjects"]):
-            col1, col2 = st.columns([5, 1])
-            col1.write(f"{i + 1}. {subject}")
-            if col2.button("Delete", key=f"subject_{i}"):
-                data["subjects"].pop(i)
-                refresh_saved_data()
-    else:
-        st.info("No subjects added yet.")
+            with cols[i % 3]:
+                with st.container(border=True):
+                    st.markdown("### 📘 " + subject)
+                    st.caption("Your learning, your progress.")
+                    if st.button("Remove", key=f"subject_{i}"):
+                        data["subjects"].pop(i); save(); st.rerun()
+    else: st.info("Add your first subject above.")
 
-
-# ---------------- TASKS ----------------
-elif page == "Homework & Tasks":
-    st.subheader("Homework and tasks")
-
-    with st.form("task_form", clear_on_submit=True):
-        title = st.text_input("Task title")
-        subject = st.text_input("Subject", value="General")
-        due = st.text_input("Due date", placeholder="e.g. 12 October")
-        add_task = st.form_submit_button("Add task")
-
-    if add_task:
-        if not title.strip():
-            st.error("Enter a task title.")
-        else:
-            data["tasks"].append({
-                "title": title.strip(),
-                "subject": subject.strip() or "General",
-                "due": due.strip() or "Not set",
-                "completed": False
-            })
-            if save_data():
-                st.success("Task added!")
-
-    st.write("### Your tasks")
-    if data["tasks"]:
-        for i, task in enumerate(data["tasks"]):
-            with st.container(border=True):
-                col1, col2 = st.columns([4, 2])
-                col1.write(f"**{task.get('title', 'Untitled')}**")
-                col1.caption(
-                    f"{task.get('subject', 'General')} · "
-                    f"Due: {task.get('due', 'Not set')}"
-                )
-                done = task.get("completed", False)
-                new_status = col2.checkbox(
-                    "Completed",
-                    value=done,
-                    key=f"task_done_{i}"
-                )
-
-                button_col1, button_col2 = st.columns(2)
-                if new_status != done:
-                    task["completed"] = new_status
-                    save_data()
-                    st.rerun()
-
-                if button_col1.button("Delete task", key=f"task_delete_{i}"):
-                    data["tasks"].pop(i)
-                    refresh_saved_data()
-    else:
-        st.info("No homework tasks yet.")
-
-
-# ---------------- MARKS ----------------
 elif page == "Marks & Results":
-    st.subheader("Marks and results")
-
-    with st.form("marks_form", clear_on_submit=True):
-        subject = st.text_input("Subject")
-        maximum = st.number_input("Maximum marks", min_value=1.0, value=100.0)
-        mark = st.number_input("Marks obtained", min_value=0.0, max_value=maximum)
-        add_mark = st.form_submit_button("Save marks")
-
-    if add_mark:
-        if not subject.strip():
-            st.error("Enter a subject name.")
-        else:
-            data["marks"].append({
-                "subject": subject.strip(),
-                "mark": mark,
-                "maximum": maximum
-            })
-            if save_data():
-                st.success("Marks saved!")
-
+    header("Measure your learning", "Marks & Results", "Record results and notice your progress over time.")
+    with st.form("mark_add", clear_on_submit=True, border=True):
+        subjects = data["subjects"]
+        c1, c2, c3 = st.columns(3)
+        subject = c1.selectbox("Subject", subjects) if subjects else c1.text_input("Subject")
+        exam = c2.text_input("Exam name", placeholder="Unit test")
+        mark = c3.number_input("Mark (%)", min_value=0.0, max_value=100.0, step=1.0)
+        if st.form_submit_button("Save result", type="primary"):
+            if subject and exam.strip():
+                data["marks"].append({"subject": subject, "exam": exam.strip(), "mark": mark, "date": date.today().isoformat()})
+                save(); st.rerun()
+            else: st.warning("Choose a subject and enter an exam name.")
     if data["marks"]:
-        st.write("### Results")
-        st.dataframe(data["marks"], use_container_width=True)
-
-        total, maximum, percentage = results()
-        a, b, c = st.columns(3)
-        a.metric("Total marks", f"{total:g} / {maximum:g}")
-        b.metric("Percentage", f"{percentage:.2f}%")
-        c.metric("Grade", grade_for(percentage))
-
+        avg = sum(x["mark"] for x in data["marks"]) / len(data["marks"])
+        st.metric("Average recorded mark", f"{avg:.1f}%")
         for i, item in enumerate(data["marks"]):
-            if st.button(f"Delete {item['subject']} entry", key=f"mark_delete_{i}"):
-                data["marks"].pop(i)
-                refresh_saved_data()
-    else:
-        st.info("Add your marks to calculate your percentage and grade.")
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([0.55, 0.25, 0.2])
+                c1.markdown(f"**{item['subject']}**")
+                c1.caption(f"{item['exam']} · {item['date']}")
+                c2.metric("Mark", f"{item['mark']:.1f}%")
+                if c3.button("Delete", key=f"mark_{i}"):
+                    data["marks"].pop(i); save(); st.rerun()
+    else: st.info("Your results will appear here after your first entry.")
 
-
-# ---------------- TIMETABLE ----------------
 elif page == "Timetable":
-    st.subheader("Class timetable")
+    header("Make time for what matters", "Timetable", "Build a simple weekly plan for classes or study sessions.")
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    with st.form("timetable_add", clear_on_submit=True, border=True):
+        c1, c2, c3 = st.columns(3)
+        day = c1.selectbox("Day", days)
+        time = c2.text_input("Time", placeholder="09:00–09:45")
+        subjects = data["subjects"] + ["Other"] if data["subjects"] else ["Other"]
+        subject = c3.selectbox("Subject / activity", subjects)
+        if st.form_submit_button("Add to timetable", type="primary"):
+            if time.strip():
+                data["timetable"].append({"day": day, "time": time.strip(), "subject": subject})
+                save(); st.rerun()
+            else: st.warning("Enter a time.")
+    for day in days:
+        entries = [x for x in data["timetable"] if x["day"] == day]
+        if entries:
+            with st.expander(f"📅 {day} · {len(entries)} item(s)", expanded=day == date.today().strftime("%A")):
+                for i, item in enumerate(entries):
+                    c1, c2, c3 = st.columns([0.25, 0.55, 0.2])
+                    c1.write(item["time"]); c2.write(item["subject"])
+                    if c3.button("Remove", key=f"tt_{day}_{i}"):
+                        data["timetable"].remove(item); save(); st.rerun()
+    if not data["timetable"]: st.info("Your timetable is empty. Add a study session above.")
 
-    with st.form("timetable_form", clear_on_submit=True):
-        day = st.selectbox(
-            "Day",
-            ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        )
-        time = st.text_input("Time", placeholder="e.g. 9:00–9:45 AM")
-        subject = st.text_input("Subject")
-        add_class = st.form_submit_button("Add class")
-
-    if add_class:
-        if not time.strip() or not subject.strip():
-            st.error("Enter both time and subject.")
-        else:
-            data["timetable"].append({
-                "day": day,
-                "time": time.strip(),
-                "subject": subject.strip()
-            })
-            if save_data():
-                st.success("Timetable entry added!")
-
-    if data["timetable"]:
-        st.dataframe(data["timetable"], use_container_width=True)
-        for i, item in enumerate(data["timetable"]):
-            if st.button(
-                f"Delete {item['day']} - {item['subject']}",
-                key=f"class_delete_{i}"
-            ):
-                data["timetable"].pop(i)
-                refresh_saved_data()
-    else:
-        st.info("Your timetable is empty.")
-
-
-# ---------------- SEARCH ----------------
-elif page == "Search":
-    st.subheader("Search study information")
-    query = st.text_input("Search by subject, task, day, or keyword").strip().lower()
-
-    if query:
-        found = []
-
-        for subject in data["subjects"]:
-            if query in subject.lower():
-                found.append(("Subject", subject))
-
-        for task in data["tasks"]:
-            text = f"{task.get('title', '')} {task.get('subject', '')} {task.get('due', '')}"
-            if query in text.lower():
-                found.append(("Task", task.get("title", "Untitled")))
-
-        for item in data["marks"]:
-            if query in item.get("subject", "").lower():
-                found.append(("Marks", item["subject"]))
-
-        for item in data["timetable"]:
-            text = f"{item.get('day', '')} {item.get('time', '')} {item.get('subject', '')}"
-            if query in text.lower():
-                found.append(("Timetable", f"{item['day']} — {item['time']} — {item['subject']}"))
-
-        if found:
-            for category, value in found:
-                st.write(f"**{category}:** {value}")
-        else:
-            st.info("No matching information found.")
-
-
-# ---------------- ABOUT ----------------
-elif page == "About":
-    st.subheader("About Student Life Assistant")
-    st.write(
-        "A student organiser built with Python and Streamlit. "
-        "It helps manage a student profile, subjects, homework, marks, "
-        "timetable, and academic progress."
-    )
-    st.write("Data is stored locally in student_data.json.")
-    st.caption("This project does not require you to write HTML, CSS, or JavaScript.")
+elif page == "My Profile":
+    header("Make this space yours", "My Profile", "Personalise your workspace and choose a goal to guide your week.")
+    p = data["profile"]
+    with st.form("profile_save", border=True):
+        name = st.text_input("Name or nickname", value=p.get("name", "Student"))
+        grade = st.text_input("Class / grade", value=p.get("grade", "SSLC"))
+        goal = st.text_area("Current goal", value=p.get("goal", ""))
+        if st.form_submit_button("Save profile", type="primary"):
+            data["profile"] = {"name": name.strip() or "Student", "grade": grade.strip(), "goal": goal.strip()}
+            save(); st.success("Profile saved.")
+    st.caption("Privacy tip: do not enter passwords, ID numbers, or other sensitive personal information.")
+    with st.expander("About NOVA"):
+        st.write("A student organiser built using Python and Streamlit. Your app data is stored in student_data.json.")
+        st.warning("On cloud hosting, local file storage is not a dependable permanent database. Avoid using real private information.")
