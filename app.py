@@ -172,8 +172,14 @@ elif page == "Marks & Results":
             with st.container(border=True):
                 c1, c2, c3 = st.columns([0.55, 0.25, 0.2])
                 c1.markdown(f"**{item['subject']}**")
-                c1.caption(f"{item['exam']} · {item['date']}")
-                c2.metric("Mark", f"{item['mark']:.1f}%")
+                c1.caption(
+                    f"{item.get('exam', 'Previous result')} · "
+                    f"{item.get('date', 'Date not recorded')}"
+                )
+                mark = float(item.get("mark", 0))
+                maximum = float(item.get("maximum", 100))
+                percentage = (mark / maximum * 100) if maximum > 0 else 0
+                c2.metric("Mark", f"{percentage:.1f}%")
                 if c3.button("Delete", key=f"mark_{i}"):
                     data["marks"].pop(i); save(); st.rerun()
     else: st.info("Your results will appear here after your first entry.")
@@ -203,17 +209,53 @@ elif page == "Timetable":
                         data["timetable"].remove(item); save(); st.rerun()
     if not data["timetable"]: st.info("Your timetable is empty. Add a study session above.")
 
+
 elif page == "My Profile":
-    header("Make this space yours", "My Profile", "Personalise your workspace and choose a goal to guide your week.")
+    header(
+        "Make this space yours",
+        "My Profile",
+        "Personalise your workspace and choose a goal to guide your week."
+    )
     p = data["profile"]
+
     with st.form("profile_save", border=True):
-        name = st.text_input("Name or nickname", value=p.get("name", "Student"))
-        grade = st.text_input("Class / grade", value=p.get("grade", "SSLC"))
-        goal = st.text_area("Current goal", value=p.get("goal", ""))
-        if st.form_submit_button("Save profile", type="primary"):
-            data["profile"] = {"name": name.strip() or "Student", "grade": grade.strip(), "goal": goal.strip()}
-            save(); st.success("Profile saved.")
-    st.caption("Privacy tip: do not enter passwords, ID numbers, or other sensitive personal information.")
+        name = st.text_input(
+            "Name or nickname",
+            value=p.get("name", "Student")
+        )
+        grade = st.text_input(
+            "Class / grade",
+            value=p.get("grade", p.get("class", "SSLC"))
+        )
+        goal = st.text_area(
+            "Current goal",
+            value=p.get("goal", "")
+        )
+
+        submitted = st.form_submit_button(
+            "Save profile",
+            type="primary"
+        )
+
+        if submitted:
+            data["profile"] = {
+                "name": name.strip() or "Student",
+                "grade": grade.strip(),
+                "goal": goal.strip()
+            }
+            save()
+            st.success("Profile saved.")
+
+    st.caption(
+        "Privacy tip: do not enter passwords, ID numbers, "
+        "or other sensitive personal information."
+    )
+
     with st.expander("About NOVA"):
-        st.write("A student organiser built using Python and Streamlit. Your app data is stored in student_data.json.")
-        st.warning("On cloud hosting, local file storage is not a dependable permanent database. Avoid using real private information.")
+        st.write(
+            "A student organiser built using Python and Streamlit."
+        )
+        st.warning(
+            "Cloud file storage may not preserve changes permanently. "
+            "Avoid entering private student information."
+        )
