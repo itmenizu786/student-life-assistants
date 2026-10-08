@@ -1,0 +1,17 @@
+{
+    "profile": {
+        "name": "",
+        "class": "",
+        "school": ""
+    },
+    "subjects": [],
+    "tasks": [],
+    "marks": [
+        {
+            "subject": "malayalam",
+            "mark": 99.0,
+            "maximum": 100.0
+        }
+    ],
+    "timetable": []
+}
